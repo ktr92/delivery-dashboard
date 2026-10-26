@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo, useCallback } from 'react';
 import { Modal } from "./ui/Modal"; // Импортируем модалку из UI-kit
 import { type Courier, useCourierStore } from "../store/useCourierStore";
 
@@ -7,7 +7,9 @@ interface CourierCardProps {
   courier: Courier; // Принимаем объект курьера из пропсов
 }
 
-export function CourierCard({ courier }: CourierCardProps) {
+// Заворачиваем компонент в memo(). 
+// Теперь React перерендерит эту карточку ТОЛЬКО если пропса courier визуально изменилась.
+export const CourierCard = memo(function CourierCard({ courier }: CourierCardProps) {
   // Локальное состояние. useState возвращает массив: [текущее_значение, функция_для_обновления]
   // Во Vue это было бы: const isBusy = ref(false)
   //const [isBusy, setIsBusy] = useState<boolean>(false);
@@ -20,15 +22,20 @@ export function CourierCard({ courier }: CourierCardProps) {
   );
   const selectCourier = useCourierStore((state) => state.selectCourier);
 
-  const handleOpenDetails = () => {
+
+  // Заворачиваем функции в useCallback.
+  // Во Vue функции внутри скрипта создаются один раз. В React при каждом рендере функция создается ЗАНОГО.
+  // useCallback кэширует ссылку на функцию, чтобы она не менялась при каждом тике сокета.
+
+  const handleOpenDetails = useCallback(() => {
     selectCourier(courier.id); // Записываем в стор, какого курьера мы сейчас смотрим
     setIsModalOpen(true);
-  };
+  }, [courier.id, selectCourier]);
 
-  const handleCloseDetails = () => {
+  const handleCloseDetails = useCallback(() => {
     selectCourier(null);
     setIsModalOpen(false);
-  };
+  }, [selectCourier]);
 
   return (
     <div
@@ -58,4 +65,4 @@ export function CourierCard({ courier }: CourierCardProps) {
       </Modal>
     </div>
   );
-}
+});
