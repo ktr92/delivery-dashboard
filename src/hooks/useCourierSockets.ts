@@ -7,7 +7,7 @@ export function useCourierSockets() {
 
    useEffect(() => {
     // В реальном проекте здесь было бы: const ws = new WebSocket('wss://://delivery.com')
-    // сделаем симуляцию сокета, которая слегка меняет координаты курьеров
+    // симуляция сокета, которая слегка меняет координаты курьеров
     const interval = setInterval(() => {
       const updatedCouriers = couriers.map((courier) => {
         // Случайное микро-смещение для имитации движения по городу
@@ -22,7 +22,7 @@ export function useCourierSockets() {
       });
 
       // Записываем новые координаты в Zustand. 
-      // Карта автоматически поймает это во 2-м useEffect и передвинет маркеры
+      // Карта автоматически поймает в useEffect и передвинет маркеры
       setCouriers(updatedCouriers);
     }, 1500);
 
