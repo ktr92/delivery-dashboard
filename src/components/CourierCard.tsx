@@ -37,6 +37,10 @@ export const CourierCard = memo(function CourierCard({ courier }: CourierCardPro
     setIsModalOpen(false);
   }, [selectCourier]);
 
+  const handleShowOrders = useCallback(() => {
+    selectCourier(courier.id);
+  }, [courier.id, selectCourier]);
+
   return (
     <div
       style={{
@@ -55,6 +59,7 @@ export const CourierCard = memo(function CourierCard({ courier }: CourierCardPro
       </button>
       <br />
       <br />
+      <button onClick={handleShowOrders}>Показать заказы</button>
       <button onClick={handleOpenDetails}>Подробнее</button>
       {/* модалка-портал. Всё что внутри — это children (слот) */}
       <Modal isOpen={isModalOpen} onClose={handleCloseDetails}>

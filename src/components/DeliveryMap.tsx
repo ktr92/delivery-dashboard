@@ -1,84 +1,28 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef } from "react";
 import { useCourierStore } from "../store/useCourierStore";
-import { useActiveOrders, type Order } from "../hooks/useActiveOrders";
-
-// ФУНКЦИЯ ОТРИСОВКИ МАРКЕРОВ (вынесена отдельно, чтобы использовать в разных эффектах)
-const renderMarkers = (ymaps: any, collection: any, couriersList: any[]) => {
-  if (!collection) return;
-
-  // Очищаем старые маркеры, чтобы они не дублировались
-  collection.removeAll();
-
-  // Проходимся по курьерам из Zustand стора
-  couriersList.forEach((courier) => {
-    const placemark = new ymaps.Placemark(
-      [courier.lat, courier.lng],
-      {
-        balloonContent: `<strong>${courier.name}</strong><br>Статус: ${courier.isBusy ? "Занят" : "Свободен"}`,
-      },
-      {
-        preset: courier.isBusy
-          ? "islands#redCircleDotIcon"
-          : "islands#greenCircleDotIcon",
-      },
-    );
-    collection.add(placemark);
-  });
-};
-
-const renderOrders = (
-  ymaps: any,
-  collection: any,
-  orders: Order[] | undefined,
-) => {
-  if (!collection) return;
-
-  if (!orders) return;
-
-  // Очищаем старые маркеры, чтобы они не дублировались
-  collection.removeAll();
-
-  // Проходимся по курьерам из Zustand стора
-  orders.forEach((order) => {
-    const placemark = new ymaps.Placemark(
-      [order.lat, order.lng],
-      {
-        balloonContent: `<strong>${order.title}</strong><br>Статус: ${order.courierId ? "Занят" : "Свободен"}`,
-      },
-      {
-        preset: "islands#blueHomeGlyphIcon",
-      },
-    );
-    collection.add(placemark);
-  });
-};
+import { useActiveOrders } from "../hooks/useActiveOrders";
 
 export function DeliveryMap() {
-  // useRef чтобы сохранить значение между перерендерами, и не вызывать перерендер при измнении
-  // mapContainerRef нужен для получения прямого доступа к HTML-элементу (куда встраивать карту)
   const mapContainerRef = useRef<HTMLDivElement>(null);
-
-  // mapInstanceRef и collectionRef хранят инстансы Яндекса между перерендерами,
-  // не вызывая лишних перерисовок при изменении их значений
   const mapInstanceRef = useRef<any>(null);
-   const couriersCollectionRef = useRef<any>(null);
+
+  // Создаем две отдельные коллекции, чтобы они не мешали друг другу
+  const couriersCollectionRef = useRef<any>(null);
   const ordersCollectionRef = useRef<any>(null);
 
-  // Забираем данные из Zustand стора
   const couriers = useCourierStore((state) => state.couriers);
   const selectedCourierId = useCourierStore((state) => state.selectedCourierId);
   const selectedCourier = couriers.find((c) => c.id === selectedCourierId);
 
+  // Получаем адреса заказов из кэша / API
   const { data: orders = [] } = useActiveOrders();
 
-  // ЭФФЕКТ №1: Создание карты (onMounted)
+  // ЭФФЕКТ №1: Инициализация карты (onMounted)
   useEffect(() => {
     const ymaps = (window as any).ymaps;
     if (!ymaps || !mapContainerRef.current) return;
 
     ymaps.ready(() => {
-      // Защита от Strict Mode: если карта в этом div уже инициализирована, ничего не делаем
       if (
         mapInstanceRef.current ||
         (mapContainerRef.current && mapContainerRef.current.children.length > 0)
@@ -88,25 +32,40 @@ export function DeliveryMap() {
 
       try {
         const map = new ymaps.Map(mapContainerRef.current, {
-          center: [55.751244, 37.618423], // Москва
+          center: [55.751244, 37.618423],
           zoom: 12,
           controls: ["zoomControl", "fullscreenControl"],
         });
 
-            const couriersCollection = new ymaps.GeoObjectCollection();
-        const ordersCollection = new ymaps.GeoObjectCollection();
-
+        // Создаем и добавляем на карту коллекцию для курьеров
+        const couriersCollection = new ymaps.GeoObjectCollection();
         map.geoObjects.add(couriersCollection);
-        map.geoObjects.add(ordersCollection);
-
-        // Сохраняем ссылки в useRef
-        mapInstanceRef.current = map;
         couriersCollectionRef.current = couriersCollection;
+
+        // Создаем и добавляем на карту коллекцию для адресов
+        const ordersCollection = new ymaps.GeoObjectCollection();
+        map.geoObjects.add(ordersCollection);
         ordersCollectionRef.current = ordersCollection;
 
-        // Важно: РИСУЕМ МАРКЕРЫ СРАЗУ при создании карты
-        renderMarkers(ymaps, couriersCollection, couriers);
-        renderOrders(ymaps, ordersCollection, orders);
+        mapInstanceRef.current = map;
+
+        // Рисуем первоначальный список курьеров
+        couriers.forEach((courier) => {
+          const courierPlacemark = new ymaps.Placemark(
+            [courier.lat, courier.lng],
+            {
+              balloonContent: `<strong>Курьер: ${courier.name}</strong><br>Статус: ${courier.isBusy ? "Занят" : "Свободен"}`,
+              hintContent: courier.name,
+            },
+            {
+              preset: courier.isBusy
+                ? "islands#redCircleDotIcon"
+                : "islands#greenCircleDotIcon",
+            },
+          );
+          (courierPlacemark as any).courierId = courier.id;
+          couriersCollection.add(courierPlacemark);
+        });
       } catch (error) {
         console.error("Ошибка при создании Яндекс Карт:", error);
       }
@@ -120,39 +79,122 @@ export function DeliveryMap() {
         ordersCollectionRef.current = null;
       }
     };
-  }, []); // Пустой массив = сработает один раз при монтировании
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // ЭФФЕКТ №2: Синхронизация маркеров (watch за изменением массива couriers)
+  // ЭФФЕКТ №2: Отрисовка адресов заказов (Срабатывает, когда orders загрузились из API)
   useEffect(() => {
     const ymaps = (window as any).ymaps;
-    // Рисуем маркеры только если карта и коллекция уже физически созданы
-    if (ymaps && couriersCollectionRef.current) {
-      renderMarkers(ymaps, couriersCollectionRef.current, couriers);
-    }
-  }, [couriers]); // Этот эффект перезапускается каждый раз, когда массив couriers в сторе меняется
+    if (!ymaps || !ordersCollectionRef.current) return;
 
-  // ЭФФЕКТ №3: Фокус на выбранного курьера (watch за selectedCourier)
-  useEffect(() => {
-    if (selectedCourier && mapInstanceRef.current) {
-      mapInstanceRef.current.setCenter(
-        [selectedCourier.lat, selectedCourier.lng],
-        14,
+    // Стираем старые адреса и перерисовываем актуальные
+    ordersCollectionRef.current.removeAll();
+
+    // Фильтруем заказы, если выбран конкретный курьер
+    const filteredOrders = selectedCourierId
+      ? orders.filter((o) => o.courierId === selectedCourierId)
+      : orders;
+
+    filteredOrders.forEach((order) => {
+      const orderPlacemark = new ymaps.Placemark(
+        [order.lat, order.lng],
         {
-          checkZoomRange: true,
-          duration: 400,
+          balloonContent: `<strong>Заказ #${order.id}</strong><br>${order.title}`,
+          hintContent: `Точка доставки #${order.id}`,
+        },
+        {
+          preset: "islands#blueHomeIcon",
+          iconColor: "#1e88e5",
         },
       );
-    }
-  }, [selectedCourier]);
+      ordersCollectionRef.current.add(orderPlacemark);
+    });
+  }, [orders, selectedCourierId]); // Реагирует на загрузку заказов или фильтрацию
 
-  // ЭФФЕКТ №4: Вывод адресов заказов
+  // ЭФФЕКТ №3: Движение курьеров (Срабатывает при тиках сокетов)
   useEffect(() => {
     const ymaps = (window as any).ymaps;
-    // Рисуем маркеры только если карта и коллекция уже физически созданы
-    if (ymaps && ordersCollectionRef.current) {
-      renderOrders(ymaps, ordersCollectionRef.current, orders);
+    if (!ymaps || !couriersCollectionRef.current) return;
+
+    couriersCollectionRef.current.each((geoObject: any) => {
+      if (geoObject.courierId !== undefined) {
+        const freshData = couriers.find((c) => c.id === geoObject.courierId);
+        if (freshData) {
+          // Просто обновляем координаты — нативный балун ЕДЕТ следом!
+          geoObject.geometry.setCoordinates([freshData.lat, freshData.lng]);
+          geoObject.options.set(
+            "preset",
+            freshData.isBusy
+              ? "islands#redCircleDotIcon"
+              : "islands#greenCircleDotIcon",
+          );
+        }
+      }
+    });
+  }, [couriers]);
+
+  // ЭФФЕКТ №4: Фильтрация видимости самих курьеров
+  useEffect(() => {
+    if (!couriersCollectionRef.current) return;
+
+    couriersCollectionRef.current.each((geoObject: any) => {
+      if (geoObject.courierId !== undefined) {
+        if (selectedCourierId) {
+          geoObject.options.set(
+            "visible",
+            geoObject.courierId === selectedCourierId,
+          );
+        } else {
+          geoObject.options.set("visible", true);
+        }
+      }
+    });
+  }, [selectedCourierId]);
+
+  // ЭФФЕКТ №5: Умное масштабирование границ (Bounds) при выборе курьера
+  useEffect(() => {
+    const mapInstance = mapInstanceRef.current;
+    const ymaps = (window as any).ymaps;
+
+    if (!mapInstance || !ymaps) return;
+
+    // 1. Если курьер выбран — подстраиваем масштаб под него и его заказы
+    if (selectedCourier) {
+      // Собираем массив координат [lat, lng], которые ДОЛЖНЫ поместиться на экране
+      const pointsToFit: [number, number][] = [
+        [selectedCourier.lat, selectedCourier.lng], // Координата самого курьера
+      ];
+
+      // Находим все заказы, привязанные к этому курьеру
+      const courierOrders = orders.filter(
+        (o) => o.courierId === selectedCourier.id,
+      );
+
+      // Добавляем координаты этих заказов в наш массив
+      courierOrders.forEach((order) => {
+        pointsToFit.push([order.lat, order.lng]);
+      });
+
+      // На основе массива точек генерируем прямоугольную область для Яндекс Карт
+      // Метод util.bounds.fromPoints сам вычислит крайнюю верхнюю-левую и нижнюю-правую точки
+      const bounds = ymaps.util.bounds.fromPoints(pointsToFit);
+
+      // Применяем границы к карте с плавной анимацией
+      mapInstance.setBounds(bounds, {
+        checkZoomRange: true, // Проверить, чтобы масштаб не ушел в бесконечность
+        duration: 500, // Длительность анимации в мс
+        zoomMargin: 50, // Отступ в пикселях от краев карты, чтобы маркеры не прижимались к рамке
+      });
+    } else {
+      // 2. Если фильтр сброшен (никто не выбран) — можно вернуть дефолтный центр Москвы
+      // (Делаем проверку, чтобы не сбрасывать карту просто так при первом рендере)
+      if (mapInstance.getZoom() !== 12 && !selectedCourierId) {
+        mapInstance.setCenter([55.751244, 37.618423], 12, {
+          duration: 400,
+        });
+      }
     }
-  }, [orders]); // Этот эффект перезапускается каждый раз, когда массив couriers в сторе меняется
+  }, [selectedCourier, selectedCourierId, orders]); // Эффект сработает при клике на «Подробнее» или если обновился список заказов
 
   return (
     <div
