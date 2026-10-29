@@ -2,20 +2,20 @@
 import { useEffect, useRef, useState } from "react";
 
 interface Data {
-  id: number,
-  title: string,
-  completed: boolean
+  id: number;
+  title: string;
+  completed: boolean;
 }
 
 interface ApiResponse {
-  status: number,
-  endpoint: string,
-  message: string,
-  data: Data[]
+  status: number;
+  endpoint: string;
+  message: string;
+  data: Data[];
 }
 
 interface FetchOptions {
-  signal: AbortSignal
+  signal: AbortSignal;
 }
 
 const fakeFetch = (url: string, options: FetchOptions) => {
@@ -23,7 +23,7 @@ const fakeFetch = (url: string, options: FetchOptions) => {
     const signal = options.signal;
 
     if (signal && signal.aborted) {
-      reject(new DOMException("Aborted"));
+      reject(new DOMException("Aborted", "AbortError"));
     }
 
     const timeoutId = setTimeout(() => {
@@ -50,7 +50,7 @@ const fakeFetch = (url: string, options: FetchOptions) => {
     if (signal) {
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
-        reject(new DOMException("Aborted"));
+        reject(new DOMException("Aborted", "AbortError"));
       });
     }
   });
@@ -61,13 +61,12 @@ export function Search() {
   const [loading, setLoading] = useState<boolean>(false);
 
   const cache = useRef<Map<string, ApiResponse>>(new Map());
-  const timer = useRef<ReturnType <typeof setTimeout>>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(null);
   const controller = useRef<AbortController | null>(null);
 
   function searchInput(val: string) {
     changeText(val);
 
-    setLoading(true);
     
     if (cache.current.has(val)) {
       console.log("CACHED: ", cache.current.get(val));
@@ -85,18 +84,19 @@ export function Search() {
 
     controller.current = new AbortController();
 
-    timer.current = setTimeout(() => {
+    timer.current = setTimeout(async () => {
       try {
-        fakeFetch(val, { signal: controller.current.signal })
-          .then((res) => res.json())
-          .then((res) => {
-            console.log(val, res);
-            controller.current = null;
-            cache.current.set(val, res);
-            console.log(cache.current);
+        setLoading(true);
 
-            setLoading(false);
-          });
+        const res = await fakeFetch(val, { signal: controller.current.signal });
+        const resData: ApiResponse = await res.json();
+
+        console.log(val, res);
+        controller.current = null;
+        cache.current.set(val, resData);
+        console.log(cache.current);
+
+        setLoading(false);
       } catch (error: any) {
         if (error.name === "AbortError") {
           console.log("debounce");
