@@ -3,6 +3,7 @@ import { CourierCard } from './components/CourierCard';
 import { DeliveryMap } from './components/DeliveryMap'; // Импортируем нашу Яндекс.Карту
 import { useCourierSockets } from './hooks/useCourierSockets';
 import { OrdersList } from './components/OrdersList';
+import { Search } from './components/Search';
 
 export default function App() {
   // Забираем массив курьеров из Zustand стора
@@ -15,6 +16,8 @@ export default function App() {
   return (
     <div style={{ padding: '24px', fontFamily: 'sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
       <h1>(Yandex Maps)</h1>
+
+      <Search />
       
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '24px', marginTop: '20px' }}>
         {/* Левая колонка: Список карточек курьеров */}
